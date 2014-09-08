@@ -223,7 +223,7 @@ handin: tarball-pref myapi.key
 	    > /dev/null || { \
 		echo ; \
 		echo Submit seems to have failed.; \
-		echo Please go to $(WEBSUB) and upload the tarball manually.; }
+		echo Please go to $(WEBSUB)/ and upload the tarball manually.; }
 
 handin-check:
 	@if ! test -d .git; then \
