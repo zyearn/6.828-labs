@@ -75,7 +75,9 @@ sched_halt(void)
 		"pushl $0\n"
 		"pushl $0\n"
 		"sti\n"
+		"1:\n"
 		"hlt\n"
+		"jmp 1b\n"
 	: : "a" (thiscpu->cpu_ts.ts_esp0));
 }
 
