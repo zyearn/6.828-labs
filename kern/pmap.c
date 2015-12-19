@@ -183,9 +183,7 @@ mem_init(void)
     //    - pages itself -- kernel RW, user NONE
     // Your code goes here:
     int pages_size = ROUNDUP(npages * sizeof(struct PageInfo), PGSIZE); 
-    for (int i = 0; i < pages_size; i += PGSIZE) {
-        page_insert(kern_pgdir, pa2page(PADDR(pages+i/sizeof(struct PageInfo))), (void *)(UPAGES + i), PTE_U | PTE_P);
-    }
+    boot_map_region(kern_pgdir, UPAGES, pages_size, PADDR(pages), PTE_U);
 
     //////////////////////////////////////////////////////////////////////
     // Use the physical memory that 'bootstack' refers to as the kernel
@@ -198,10 +196,7 @@ mem_init(void)
     //       overwrite memory.  Known as a "guard page".
     //     Permissions: kernel RW, user NONE
     // Your code goes here:
-    for (int i = 0; i < KSTKSIZE; i += PGSIZE) {
-        page_insert(kern_pgdir, pa2page(PADDR(bootstack) + i), (void *)(KSTACKTOP - KSTKSIZE + i), PTE_W | PTE_P);
-        
-    }
+    boot_map_region(kern_pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE, PADDR(bootstack), PTE_W);
 
     //////////////////////////////////////////////////////////////////////
     // Map all of physical memory at KERNBASE.
@@ -211,9 +206,7 @@ mem_init(void)
     // we just set up the mapping anyway.
     // Permissions: kernel RW, user NONE
     // Your code goes here:
-    for (int i = 0; i < ~KERNBASE + 1; i += PGSIZE) {
-        page_insert(kern_pgdir, &pages[i/PGSIZE], (void *)(KERNBASE + i), PTE_W | PTE_P);
-    } 
+    boot_map_region(kern_pgdir, KERNBASE, ~KERNBASE+1, 0, PTE_W);
 
     // Check that the initial page directory has been set up correctly.
     check_kern_pgdir();
@@ -413,9 +406,20 @@ boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm
     // Fill this function in
     pte_t *pteaddr;
 
-    for (; va < va+size; va += PGSIZE, pa += PGSIZE) {
+    for (; size > 0; size -= PGSIZE) {
         pteaddr = pgdir_walk(pgdir, (void *)va, 1);
-        *pteaddr = pa | perm | PTE_P;
+        if (!pteaddr) {
+            panic("boot_map_region: pgdir_walk fail\n");
+        }
+
+        if (*pteaddr & PTE_P) {
+            panic("boot_map_region: remap\n");
+        }
+
+        *pteaddr = PTE_ADDR(pa) | perm | PTE_P;
+
+        va += PGSIZE;
+        pa += PGSIZE;
     }
 }
 
