@@ -199,7 +199,7 @@ mem_init(void)
 	//    - the new image at UENVS  -- kernel R, user R
 	//    - envs itself -- kernel RW, user NONE
 	// LAB 3: Your code here.
-    boot_map_region(kern_pgdir, UENVS, env_size, PADDR(envs), PTE_U);
+    boot_map_region(kern_pgdir, UENVS, env_size, PADDR(envs), PTE_W | PTE_U);
 
 	//////////////////////////////////////////////////////////////////////
 	// Use the physical memory that 'bootstack' refers to as the kernel
@@ -385,7 +385,7 @@ pte_t *
 pgdir_walk(pde_t *pgdir, const void *va, int create)
 {
     // Fill this function in
-    if (kern_pgdir[PDX(va)] == (pde_t) NULL) {
+    if (pgdir[PDX(va)] == (pde_t) NULL) {
         if (create) {
             struct PageInfo *pp = page_alloc(PGSIZE);
             if (!pp) {
@@ -395,14 +395,14 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
             pp->pp_link = NULL;
             physaddr_t addr = page2pa(pp);
             memset((void *) KADDR(addr), 0, PGSIZE);
-            kern_pgdir[PDX(va)] = addr | PTE_P | PTE_W | PTE_U;
+            pgdir[PDX(va)] = addr | PTE_P | PTE_W | PTE_U;
             
         } else {
             return NULL;
         }
     }
     
-    return KADDR(PTE_ADDR(kern_pgdir[PDX(va)])) + PTX(va) * 4;
+    return KADDR(PTE_ADDR(pgdir[PDX(va)])) + PTX(va) * 4;
 }
 
 //
