@@ -71,6 +71,7 @@ trap_init(void)
     }
 
     SETGATE(idt[T_SYSCALL], 0, GD_KT, trap_handlers[T_SYSCALL], 3);
+    SETGATE(idt[T_BRKPT], 0, GD_KT, trap_handlers[T_BRKPT], 3);
 
 	// Per-CPU setup 
 	trap_init_percpu();
@@ -149,15 +150,35 @@ trap_dispatch(struct Trapframe *tf)
 {
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
+    //cprintf("in trap_dispatch\n");
 
-	// Unexpected trap: The user process or the kernel has a bug.
-	print_trapframe(tf);
-	if (tf->tf_cs == GD_KT)
-		panic("unhandled trap in kernel");
-	else {
-		env_destroy(curenv);
-		return;
-	}
+    switch (tf->tf_trapno) {
+    case T_PGFLT:
+        page_fault_handler(tf);
+        break;
+    case T_BRKPT:
+        monitor(tf);
+        break;
+    case T_SYSCALL:
+        tf->tf_regs.reg_eax = syscall(tf->tf_regs.reg_eax,
+                tf->tf_regs.reg_edx,
+                tf->tf_regs.reg_ecx,
+                tf->tf_regs.reg_ebx,
+                tf->tf_regs.reg_edi,
+                tf->tf_regs.reg_esi);
+        break;
+    default:
+        // Unexpected trap: The user process or the kernel has a bug.
+        cprintf("Unexpected trap: %d\n", tf->tf_trapno);
+        print_trapframe(tf);
+        if (tf->tf_cs == GD_KT)
+            panic("unhandled trap in kernel");
+        else {
+            env_destroy(curenv);
+            return;
+        }
+    }
+
 }
 
 void
@@ -172,7 +193,7 @@ trap(struct Trapframe *tf)
 	// the interrupt path.
 	assert(!(read_eflags() & FL_IF));
 
-	cprintf("Incoming TRAP frame at %p\n", tf);
+	cprintf("Incoming TRAP frame at %p, tfno=%d\n", tf, tf->tf_trapno);
 
 	if ((tf->tf_cs & 3) == 3) {
 		// Trapped from user mode.
@@ -202,6 +223,7 @@ trap(struct Trapframe *tf)
 void
 page_fault_handler(struct Trapframe *tf)
 {
+    //cprintf("in the page_fault_handler\n");
 	uint32_t fault_va;
 
 	// Read processor's CR2 register to find the faulting address
@@ -210,11 +232,16 @@ page_fault_handler(struct Trapframe *tf)
 	// Handle kernel-mode page faults.
 
 	// LAB 3: Your code here.
+    if ((tf->tf_cs & 0x03) == 0) {
+	    print_trapframe(tf);
+        panic("kernel page fault");
+    }
 
 	// We've already handled kernel-mode exceptions, so if we get here,
 	// the page fault happened in user mode.
 
 	// Destroy the environment that caused the fault.
+
 	cprintf("[%08x] user fault va %08x ip %08x\n",
 		curenv->env_id, fault_va, tf->tf_eip);
 	print_trapframe(tf);
