@@ -15,7 +15,7 @@ libmain(int argc, char **argv)
 	// LAB 3: Your code here.
 	envid_t id = sys_getenvid();
     thisenv = (struct Env *)envs + ENVX(id);
-    cprintf("userprog start! thisenv = %08x\n", thisenv);
+    //cprintf("userprog start! thisenv = %08x\n", thisenv);
 
 	// save the name of the program so that panic() can use it
 	if (argc > 0)

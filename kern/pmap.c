@@ -276,7 +276,15 @@ mem_init_mp(void)
 	//     Permissions: kernel RW, user NONE
 	//
 	// LAB 4: Your code here:
-
+    
+    int i;
+    for (i=0; i<NCPU; i++) {
+        boot_map_region(kern_pgdir,
+                KSTACKTOP - i * (KSTKSIZE + KSTKGAP) - KSTKSIZE,
+                KSTKSIZE,
+                PADDR(percpu_kstacks[i]),
+                PTE_W|PTE_P);
+    }
 }
 
 // --------------------------------------------------------------
@@ -319,6 +327,12 @@ page_init(void)
 
     i = 1;
     for (; i < npages_basemem; i++) {
+        if (i == MPENTRY_PADDR/PGSIZE) {
+            pages[i].pp_ref = 1;
+            pages[i].pp_link = NULL;
+            continue;
+        }
+
         pages[i].pp_ref = 0;
         pages[i].pp_link = page_free_list;
         page_free_list = &pages[i];
@@ -462,6 +476,7 @@ boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm
 {
     // Fill this function in
     pte_t *pteaddr;
+    size = ROUNDUP(size, PGSIZE);
 
     for (; size > 0; size -= PGSIZE) {
         pteaddr = pgdir_walk(pgdir, (void *)va, 1);
@@ -470,7 +485,7 @@ boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm
         }
 
         if (*pteaddr & PTE_P) {
-            panic("boot_map_region: remap\n");
+            //panic("boot_map_region: remap\n");
         }
 
         *pteaddr = PTE_ADDR(pa) | perm | PTE_P;
@@ -604,9 +619,8 @@ mmio_map_region(physaddr_t pa, size_t size)
 {
 	// Where to start the next region.  Initially, this is the
 	// beginning of the MMIO region.  Because this is static, its
-	// value will be preserved between calls to mmio_map_region
 	// (just like nextfree in boot_alloc).
-	static uintptr_t base = MMIOBASE;
+    static uintptr_t base = MMIOBASE;
 
 	// Reserve size bytes of virtual memory starting at base and
 	// map physical pages [pa,pa+size) to virtual addresses
@@ -626,7 +640,17 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	panic("mmio_map_region not implemented");
+    int nextbase = ROUNDUP(base + size, PGSIZE);
+    if (nextbase >= MMIOLIM) {
+        panic("nextbase >= MMIOLIM");
+    }
+    boot_map_region(kern_pgdir, base, size, pa, PTE_PCD | PTE_PWT | PTE_W);
+
+    void *ret = (void *)base;
+    base = nextbase;
+
+    return ret;
+	// panic("mmio_map_region not implemented");
 }
 
 static uintptr_t user_mem_check_addr;
@@ -755,7 +779,7 @@ check_page_free_list(bool only_low_memory)
 
 	assert(nfree_basemem > 0);
 	assert(nfree_extmem > 0);
-    cprintf("in the check_page_free_list\n");
+    cprintf("check_page_free_list succeed\n");
 }
 
 //
@@ -847,6 +871,7 @@ check_page_alloc(void)
 static void
 check_kern_pgdir(void)
 {
+    cprintf("in check_kern_pgdir\n");
 	uint32_t i, n;
 	pde_t *pgdir;
 
@@ -863,8 +888,9 @@ check_kern_pgdir(void)
 		assert(check_va2pa(pgdir, UENVS + i) == PADDR(envs) + i);
 
 	// check phys mem
-	for (i = 0; i < npages * PGSIZE; i += PGSIZE)
+	for (i = 0; i < npages * PGSIZE; i += PGSIZE) {
 		assert(check_va2pa(pgdir, KERNBASE + i) == i);
+    }
 
 	// check kernel stack
 	// (updated in lab 4 to check per-CPU kernel stacks)
