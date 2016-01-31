@@ -89,11 +89,15 @@ envid2env(envid_t envid, struct Env **env_store, bool checkperm)
 	// (i.e., does not refer to a _previous_ environment
 	// that used the same slot in the envs[] array).
 	e = &envs[ENVX(envid)];
-	if (e->env_status == ENV_FREE || e->env_id != envid) {
+	if (e->env_status == ENV_FREE) {
 		*env_store = 0;
 		return -E_BAD_ENV;
 	}
 
+	if (e->env_id != envid) {
+		*env_store = 0;
+		return -E_BAD_ENV;
+	}
 	// Check that the calling environment has legitimate permission
 	// to manipulate the specified environment.
 	// If checkperm is set, the specified environment
@@ -258,6 +262,7 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 
 	// Enable interrupts while in user mode.
 	// LAB 4: Your code here.
+    e->env_tf.tf_eflags = FL_IF;
 
 	// Clear the page fault handler until user installs one.
 	e->env_pgfault_upcall = 0;
@@ -508,7 +513,10 @@ void
 env_pop_tf(struct Trapframe *tf)
 {
 	// Record the CPU we are running on for user-space debugging
-	curenv->env_cpunum = cpunum();
+    // edit by zyearn:
+    //      I move this line of code to env_run, otherwise it is a 
+    //      buggy code, releasing lock too early in env_run.
+	// curenv->env_cpunum = cpunum();
 
 	__asm __volatile("movl %0,%%esp\n"
 		"\tpopal\n"
@@ -547,17 +555,19 @@ env_run(struct Env *e)
 	//	e->env_tf to sensible values.
 
 	// LAB 3: Your code here.
-    if (curenv && curenv->env_status == ENV_RUNNING) {
+
+    if (curenv && curenv->env_status == ENV_RUNNING && curenv != e) {
         curenv->env_status = ENV_RUNNABLE;
     }
     
     curenv = e;
     curenv->env_status = ENV_RUNNING;
     curenv->env_runs++;
+	curenv->env_cpunum = cpunum();
+
+    lcr3(PADDR(curenv->env_pgdir));
 
     unlock_kernel();
-    lcr3(PADDR(curenv->env_pgdir));
-    
     env_pop_tf(&(curenv->env_tf));
 }
 

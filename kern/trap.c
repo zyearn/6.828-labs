@@ -183,10 +183,12 @@ trap_dispatch(struct Trapframe *tf)
 	// LAB 3: Your code here.
     //cprintf("in trap_dispatch\n");
 
+    int sysnum;
     switch (tf->tf_trapno) {
     case T_PGFLT:
         page_fault_handler(tf);
-        break;
+        return;
+
     case T_BRKPT:
         monitor(tf);
         break;
@@ -198,6 +200,8 @@ trap_dispatch(struct Trapframe *tf)
                 tf->tf_regs.reg_edi,
                 tf->tf_regs.reg_esi);
         return;
+
+        /*
     default:
         // Unexpected trap: The user process or the kernel has a bug.
         cprintf("Unexpected trap: %d\n", tf->tf_trapno);
@@ -208,6 +212,7 @@ trap_dispatch(struct Trapframe *tf)
             env_destroy(curenv);
             return;
         }
+        */
     }
 
 	// Handle spurious interrupts
@@ -222,6 +227,11 @@ trap_dispatch(struct Trapframe *tf)
 	// Handle clock interrupts. Don't forget to acknowledge the
 	// interrupt using lapic_eoi() before calling the scheduler!
 	// LAB 4: Your code here.
+    if (tf->tf_trapno == IRQ_OFFSET + IRQ_TIMER) {
+        lapic_eoi();
+        sched_yield();
+    }
+        
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
@@ -262,8 +272,8 @@ trap(struct Trapframe *tf)
 		// Acquire the big kernel lock before doing any
 		// serious kernel work.
 		// LAB 4: Your code here.
-        lock_kernel();
 		assert(curenv);
+        lock_kernel();
 
 		// Garbage collect if current enviroment is a zombie
 		if (curenv->env_status == ENV_DYING) {

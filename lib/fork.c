@@ -27,6 +27,10 @@ pgfault(struct UTrapframe *utf)
 	// LAB 4: Your code here.
 
     if (!(err & FEC_WR)) {
+        if (err & FEC_U) cprintf("has FEC_U"); else cprintf(" not FEC_U");
+        if (err & FEC_PR) cprintf(" has FEC_PR"); else cprintf(" not FEC_PR");
+        cprintf(" fault addr = %08x\n", addr);
+        cprintf(" fault eip = %08x\n", utf->utf_eip);
         panic("pgfault: need FEC_WR");
     }
     
@@ -77,6 +81,7 @@ pgfault(struct UTrapframe *utf)
 static int
 duppage(envid_t envid, unsigned pn)
 {
+	// LAB 4: Your code here.
 	int r;
     pte_t pte;
     void *addr = (void *)(pn * PGSIZE);
@@ -98,7 +103,7 @@ duppage(envid_t envid, unsigned pn)
     r = sys_page_map(0, addr, envid, addr, (PGOFF(uvpt[pn]) | PTE_COW) & (~PTE_W));
     if (r < 0) {
         cprintf("pgoff %d\n", (PGOFF(uvpt[pn]) | PTE_COW) & (~PTE_W));
-        panic("duppage: sys_page_map(0, addr, envid, addr, PGOFF(pte));");
+        panic("duppage: sys_page_map, env_id = %d, %d %e", envid, r, r);
     }
 
     r = sys_page_map(0, addr, 0, addr, (PGOFF(uvpt[pn]) | PTE_COW) & (~PTE_W));
@@ -106,8 +111,6 @@ duppage(envid_t envid, unsigned pn)
         panic("duppage: sys_page_map(0, addr, 0, addr, PGOFF(pte));");
     }
 
-
-	// LAB 4: Your code here.
 	// panic("duppage not implemented");
 	return 0;
 }
