@@ -91,22 +91,22 @@ duppage(envid_t envid, unsigned pn)
         return -E_INVAL;
     }
 
-    // read-only pages
-    if (!(pte & (PTE_W | PTE_COW))) {
-        if ((r = sys_page_map(0, addr, envid, addr, PGOFF(pte))) < 0) {
+    // read-only or shared pages
+    if (!(pte & (PTE_W | PTE_COW)) || (pte & PTE_SHARE)) {
+        if ((r = sys_page_map(0, addr, envid, addr, pte & PTE_SYSCALL)) < 0) {
             panic("duppage: read-only pages %e", r); 
         }    
 
         return r;
     }
     
-    r = sys_page_map(0, addr, envid, addr, (PGOFF(uvpt[pn]) | PTE_COW) & (~PTE_W));
+    r = sys_page_map(0, addr, envid, addr, ((pte & PTE_SYSCALL) | PTE_COW) & (~PTE_W));
     if (r < 0) {
-        cprintf("pgoff %d\n", (PGOFF(uvpt[pn]) | PTE_COW) & (~PTE_W));
+        cprintf("pgoff %d\n", ((pte & PTE_SYSCALL) | PTE_COW) & (~PTE_W));
         panic("duppage: sys_page_map, env_id = %d, %d %e", envid, r, r);
     }
 
-    r = sys_page_map(0, addr, 0, addr, (PGOFF(uvpt[pn]) | PTE_COW) & (~PTE_W));
+    r = sys_page_map(0, addr, 0, addr, (pte | PTE_COW) & (~PTE_W));
     if (r < 0) {
         panic("duppage: sys_page_map(0, addr, 0, addr, PGOFF(pte));");
     }
