@@ -489,9 +489,6 @@ sys_ipc_recv(void *dstva)
     curenv->env_ipc_recving = 1;
     curenv->env_status = ENV_NOT_RUNNABLE;
 
-    //while (curenv->env_ipc_recving) 
-    //    sched_yield();
-	// panic("sys_ipc_recv not implemented");
 	return 0;
 }
 
@@ -510,14 +507,13 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
         sys_cputs((const char *)a1, a2);
         break;
     case SYS_cgetc:
-        sys_cgetc();
-        break;
+        return sys_cgetc();
+
     case SYS_getenvid:
         return sys_getenvid();
 
     case SYS_env_destroy:
-        sys_env_destroy((envid_t)a1);
-        break;
+        return sys_env_destroy((envid_t)a1);
 
     case SYS_yield:
         sys_yield();

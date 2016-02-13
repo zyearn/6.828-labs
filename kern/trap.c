@@ -236,13 +236,11 @@ trap_dispatch(struct Trapframe *tf)
 	// Handle keyboard and serial interrupts.
 	// LAB 5: Your code here.
     if (tf->tf_trapno == IRQ_OFFSET + IRQ_KBD) {
-        cprintf("IRQ_KBD\n");
         kbd_intr();
         return;
     }
 
     if (tf->tf_trapno == IRQ_OFFSET + IRQ_SERIAL) {
-        cprintf("IRQ_SERIAL\n");
         serial_intr();
         return;
     }
