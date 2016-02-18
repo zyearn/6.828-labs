@@ -26,6 +26,10 @@ enum {
 	E_NOT_EXEC	,	// File not a valid executable
 	E_NOT_SUPP	,	// Operation not supported
 
+    // E1000 error
+    E_PKG_TOO_LONG,
+    E_TX_FULL,
+
 	MAXERROR
 };
 

@@ -35,6 +35,8 @@ static const char * const error_string[MAXERROR] =
 	[E_FILE_EXISTS]	= "file already exists",
 	[E_NOT_EXEC]	= "file is not a valid executable",
 	[E_NOT_SUPP]	= "operation not supported",
+    [E_PKG_TOO_LONG] = "transfer pkg size too long",
+    [E_TX_FULL] = "transfer queue full",
 };
 
 /*
