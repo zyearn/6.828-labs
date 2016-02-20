@@ -128,7 +128,7 @@ int sys_net_try_send(void *data, size_t len)
     return syscall(SYS_net_try_send, 1, (uint32_t) data, len, 0, 0, 0);
 }
 
-int sys_net_try_receive(void *data, size_t buflen, size_t *plen)
+int sys_net_try_receive(void *data, size_t *plen)
 {
-    return syscall(SYS_net_try_receive, 1, (uint32_t) data, buflen, (uint32_t) plen, 0, 0);
+    return syscall(SYS_net_try_receive, 1, (uint32_t) data, (uint32_t) plen, 0, 0, 0);
 }

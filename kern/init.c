@@ -66,7 +66,7 @@ i386_init(void)
 
 #if !defined(TEST_NO_NS)
 	// Start ns.
-	ENV_CREATE(net_ns, ENV_TYPE_NS);
+	// ENV_CREATE(net_ns, ENV_TYPE_NS);
 #endif
 
 #if defined(TEST)
@@ -74,7 +74,8 @@ i386_init(void)
 	ENV_CREATE(TEST, ENV_TYPE_USER);
 #else
 	// Touch all you want.
-	ENV_CREATE(user_icode, ENV_TYPE_USER);
+	//ENV_CREATE(user_icode, ENV_TYPE_USER);
+	ENV_CREATE(net_testinput, ENV_TYPE_USER);
 #endif // TEST*
 
 	// Should not be necessary - drains keyboard because interrupt has given up.

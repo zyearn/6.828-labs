@@ -19,7 +19,7 @@ input(envid_t ns_envid)
     int r;
 
     while (1) {
-        while ((r = sys_net_try_receive(buf, RCV_PKT_SIZE, &len)) < 0) {
+        while ((r = sys_net_try_receive(buf, &len)) < 0) {
             sys_yield();
         }
 
