@@ -503,7 +503,7 @@ sys_time_msec(void)
 }
 
 static int
-sys_net_try_send(void *data, int len) 
+sys_net_try_send(void *data, size_t len) 
 {
     if (data >= (void *)UTOP)
         return -E_INVAL;
@@ -512,9 +512,12 @@ sys_net_try_send(void *data, int len)
 }
 
 static int
-sys_net_receive() {
+sys_net_try_receive(void *data, size_t buflen, size_t *plen)
+{
+    if (data >= (void *)UTOP)
+        return -E_INVAL;
     
-    return 0;
+    return e1000_receive(data, buflen, plen);
 }
 
 // Dispatches to the correct kernel function, passing the arguments.
@@ -575,10 +578,10 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
         return sys_time_msec();
 
     case SYS_net_try_send:
-        return sys_net_try_send((void *)a1, (int)a2);
+        return sys_net_try_send((void *)a1, (size_t)a2);
 
-    case SYS_net_receive:
-        return sys_net_receive();
+    case SYS_net_try_receive:
+        return sys_net_try_receive((void *)a1, (size_t)a2, (size_t *)a3);
 
 	default:
 		return -E_INVAL;

@@ -27,8 +27,9 @@ enum {
 	E_NOT_SUPP	,	// Operation not supported
 
     // E1000 error
-    E_PKG_TOO_LONG,
+    E_PKT_TOO_LONG,
     E_TX_FULL,
+    E_RCV_EMPTY,
 
 	MAXERROR
 };
