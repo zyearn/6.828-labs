@@ -1,0 +1,392 @@
+这门课分三个部分：lectures, readings, and a major lab。
+lectures又细分为两个部分：第一部分介绍xv6，解读xv6源码；第二部分会介绍一些在xv6之后被提出的OS概念，会读一些paper
+lab帮助你更准确地理解概念，在6个lab中，会完善一个叫JOS的操作系统，JOS是为6.828这门课准备的kernel
+
+一些资料：
+http://grid.hust.edu.cn/zyshao/OSEngineering.htm
+
+LEC 1
+
+fork和exec为什么要分成两个sys call？为了在fork之后和exec之前做一些初始化工作，比如I/O重定向（比如close(0)，然后open一个file）
+
+dup复制一个文件描述符，返回一个新的描述符，这两个描述符指向同一个底层I/O对象
+
+File descriptors are a powerful abstraction, because they hide the details of what pipe they are connected to: a process writing to file descriptor 1 may be writing to a file, to a device like the console, or to a pipe. the file descriptor interface abstracts away the differences between files, pipes, and devices, making them all look like streams of bytes.
+
+在shell里打一个命令一般都会fork一个子进程，但是有例外：cd，它不是一个程序，而是内建在shell里修改当前目录的命令，如果cd实现成子进程，那么修改的是子进程的目录而不是当前shell进程。再比如fg
+
+在写shell时的教训：
+在父子进程中要把不需要的pipe关闭非常重要，这样可以使得读程序正确地收到EOF，否则如果有一方没有关闭，另一方永远不会收到EOF。
+
+IBM PC开机后第一条执行的指令：[f000:fff0] 0xffff0:    ljmp   $0xf000,$0xe05b
+
+BIOS做完初始化工作后，找到一个可以启动的外设，将外设的bootloader加载到内存，然后跳转过去。
+When the BIOS finds a bootable floppy or hard disk, it loads the 512-byte boot sector into memory at physical addresses 0x7c00 through 0x7dff, and then uses a jmp instruction to set the CS:IP to 0000:7c00, passing control to the boot loader.
+
+boot loader是什么？一般是外设第一个扇区上的数据
+
+boot loader和MBR的关系？MBR（Master boot record）是一种格式？
+
+为什么要打开A20（https://www.zhihu.com/question/29375534）
+
+线性地址到物理地址的转化难道是硬件做的（MMU，如果是这样的话，那么线性地址到底怎么切，即多级页表到底有几级，就是由硬件决定的了），只要把CR0上对应的位设置（比如page enable），然后CR3指向多级页表的首地址，硬件会自动读取内存里的多级页表然后转化为物理地址？查了一下的确是这样的。
+ref：http://www.cirosantilli.com/x86-paging/
+http://stackoverflow.com/questions/18431261/how-does-x86-paging-work
+
+BIOS把boot loader加载到0x7c00，然后boot loader把kernel ELF header加载到0x10000，根据这个header里的信息把相关的段都加载到0x100000(1MB)，再通过jmp *0x10018(ELF header里的一个值)跳转到0x10000c，开始执行kernel（kern/entry.S）
+
+LEC 2
+
+汇编的两种风格：
+
+- Intel syntax: op dst, src
+- AT&T (gcc/gas) syntax: op src, dst
+
+x86是如何做I/O的，分两种方法：
+
+- Original PC architecture: use dedicated I/O space
+    - Works same as memory accesses but set I/O signal
+    - Only 1024 I/O addresses（I/O ports）
+    - Accessed with special instructions (IN, OUT)
+- Memory-Mapped I/O
+    - Use normal physical memory addresses
+    - Works like ``magic'' memory: Addressed and accessed like memory, but does not behave like memory!
+
+模拟器在代码层来模拟cpu的运行和内存，比如：
+       for (;;) {
+                read_instruction();
+                switch (decode_instruction_opcode()) {
+                case OPCODE_ADD:
+                        int src = decode_src_reg();
+                        int dst = decode_dst_reg();
+                        regs[dst] = regs[dst] + regs[src];
+                        break;
+                case OPCODE_SUB:
+                        int src = decode_src_reg();
+                        int dst = decode_dst_reg();
+                        regs[dst] = regs[dst] - regs[src];
+                        break;
+                ...
+                }
+                eip += instruction_length;
+        }
+
+x86指令集可以使用的寄存器：
+8个general purpose 32-bit register: %eax, %ebx, %ecx, %edx, %edi, %esi, %ebp, and %esp(e stands for extended)
+program counter %eip
+8个80-bit floating-point registers
+control registers %cr0, %cr2, %cr3, and %cr4
+debug registers %dr0, %dr1, %dr2, and %dr3
+segment registers %cs, %ds, %es, %fs, %gs, and %ss;（They denote what memory is used for different parts of a program）
+the global and local descriptor table pseudo-registers %gdtr and %ldtr.
+
+bootloader一开始运行在real mode(simulates an Intel 8088)
+
+处理器通过CR0中的一位来判断是否在paging模式。
+
+什么实模式、保护模式，GDT，逻辑地址虚拟地址，段寄存器，现在我们的i7还用段寄存器么？
+
+既然MMU由硬件实现那为什么还需要inc/mmu.h这个文件？
+
+kernel也是有页表的，在JOS中kernel多级页表的首地址存在kern_pgdir这个变量里，并且在KERNBASE这个地址的上方的内存，直接映射到低地址物理内存
+
+在jos的qemu里输入backtrace，首先会根据ebp来打印完整的调用栈，同时也能拿到ebp上方的eip，然后根据这个eip去查找链接后的symbol table，可以找到这个eip对应哪个文件哪一行
+
+L3 GDB
+...
+
+L4 Shell & OS organization
+
+宏内核 vs 微内核
+
+Processor provide a special instruction that switches the processor from user mode to kernel mode and enters the kernel at an entry point specified by the kernel. The x86 processor provides the int instruction for this purpose.
+
+xv6的main.c中一开始由链表来管理空闲内存页，每一个空闲页的开头存着下一个空闲页的地址。
+
+之前没想通一个问题：为什么Page directory entry中指向page table的指针为什么要是物理地址？因为MMU来做页表翻译的工作，MMU在做页表查询的时候是不可能在转化虚拟地址的，它只知道物理地址。
+
+kernel代码的执行会有一个context，这个context可以是process context（用的是process的pgdir），也可以是special per-cpu scheduler context（用的是专门的kern_pgdir，是个全局变量）
+
+PTE_U(it tells the paging hardware to allow user code to access that memory)
+
+怎样防止一个进程无限制地使用cpu？h/w provides a periodic "clock interrupt"
+
+在xv6中，cpu执行int会跳转到vector.S中的代码，这个地址是由某个寄存器设置的吗？是，这个地址存在idt寄存器中，由中断号来索引（vector.S, trapasm.S, trap.c, syscall.c 的关系？）
+vector.S中每一个函数都会jmp alltraps（trapasm.S中定义了这个函数），alltraps又调用了trap(定义在trap.c中)，又调用了syscall（定义在syscall.c中），是所有syscall的入口函数。
+
+系统调用是怎么实现的？有一个.h文件暴露接口，有一个.c文件来实现接口，在x86上实现方法是内联汇编int指令（或者直接汇编实现），把系统调用号放入eax，进入内核模式，内核中有一个系统调用表，根据eax的值来索引这个表得到一个函数地址，然后Jmp过去执行这个函数（如果系统调用叫xxx，内核对应的函数一般叫sys_xxx）
+
+一些不太懂的东西，以及它们之间的关系是什么
+TSS(task state segment，mmu.h) ( The processor needs a place to save the old processor state before the interrupt or exception occurred, such as the original values of EIP and CS before the processor invoked the exception handler, so that the exception handler can later restore that old state and resume the interrupted code from where it left off. A structure called the task state segment (TSS) specifies the segment selector and address where this stack lives. The processor pushes (on this new stack) SS, ESP, EFLAGS, CS, EIP, and an optional error code. Then it loads the CS and EIP from the interrupt descriptor, and sets the ESP and SS to refer to the new stack.)
+
+TSS selector？specify where each CPU's kernel stack lives
+task segment descriptor P40
+gate descriptor mmu.h
+GDT/LDT
+IDT(interrupt descriptor table) 定义在vector.S中
+
+段寄存器（CS/DS/ES FS/GS/SS）到底在IA32中有什么用：
+Before paging, the segment registers were used as physical_address : = segment_part × 16 + offset
+while the segment registers in protected mode are used to store indexes to the GDT.
+（more details：http://reverseengineering.stackexchange.com/questions/2006/how-are-the-segment-registers-fs-gs-cs-ss-ds-es-used-in-linux，https://pdos.csail.mit.edu/6.828/2014/lec/x86_translation_and_registers.pdf）
+
+做了hw_lazy_page_allocation后，发现page fault是mmu发来的中断，整体流程是这样的：为了实现lazy allocation，在malloc以后OS不会直接找到一块空闲的物理页面，而是做一些检查后直接返回成功，所以PDE、PTE此时还是空；当CPU访问这个地址的时候，MMU发现没有这个映射，发生page fault，给cpu发一个中断，cpu接受到这个中断后，进入中断处理函数(trap)，在这个函数里，如果是page fault(T_PGFLT)，就分配一个物理页，然后把虚拟地址映射上去（mappages），发生fault的虚拟地址存在cr2寄存器中。
+
+在JOS中，物理内存是由某个函数检测的（CMOS相关？），而在xv6中，物理内存是固定的E000000（224MB）
+
+In JOS, individual environments do not have their own kernel stacks as processes do in xv6. There can be only one JOS environment active in the kernel at a time, so JOS needs only a single kernel stack.
+
+env_init_percpu（ which configures the segmentation hardware with separate segments for privilege level 0 (kernel) and privilege level 3 (user)）什么意思？
+
+i386_init -> env_create -> env_alloc && load_icode
+load_icode -> region_alloc
+env_alloc -> env_setup_vm
+
+iret（interrupt ret） vs ret的区别？https://pdos.csail.mit.edu/6.828/2014/readings/i386/IRET.htm
+
+lab3 ex1 ex2：jos启动，初始化内存信息，然后为第一个程序分配页表，分配实际的物理页，解析ELF文件，把代码，数据复制到页表对应的物理页中，然后在frametrap中设置好eip，为之后的iret设置好跳转地址（即程序的第一条指令）。发现一个困扰了一天的大bug，在pmap.c里的pgdir_walk函数中，没有用传入的pgdir参数，而是用了写死的kern_pgdir!!!导致为应用程序的pgdir设置映射的时候全部操作在了kern_pgdir上！！
+
+user space和kernel space怎么区分怎么转变？tss中存储 kernel stack的ss和esp
+
+All of the synchronous exceptions that the x86 processor can generate internally use interrupt vectors between 0 and 31, and therefore map to IDT entries 0-31. For example, a page fault always causes an exception through vector 14.MMU是CPU的一部分，所以不应该是外部中断，所以page fault是一个同步异常而不是一个异步中断。
+
+每一个IDT entry里都存着这个interrupt/exception的处理函数地址（cs:eip）
+
+what is a task gate?
+
+ISR（software），IRQ（hardware）
+
+lab3的ex4，一直卡在Mov $0, %ds，mov报错，换了movw, movl都不行，后来发现%ds, %es等寄存器是不允许直接赋值的，只能把值先赋给ax然后再mov过去。
+
+INT指令发生了什么：https://pdos.csail.mit.edu/6.828/2014/lec/l-interrupt.md
+
+一个问题：在xv6的trapasm.S中，把ds, es, fs, gs都push到栈上形成struct TrapFrame，可是这个结构中并没有fs, gs，是否会造成问题?
+
+不管是trap，fault，还是异步的interrupt，CPU都会根据IDT里面的gate descriptor存的地址跳转到处理函数（在xv6里就是vector.S中的函数，由寄存器ridt指向它，CPU会构造trapframe的一部分，处理函数会构造剩下的一部分）
+
+整个计算机系统底层是由OS和硬件高度配合的，硬件的行为只能通过看文档，lab6需要编写驱动与硬件交互
+
+PDE_T和PTE_T里的perm是什么关系
+
+怎样从user space到kernel space？int
+怎样从kernel返回user space？ iret
+
+lab3的partb主要是为trap函数补充各种情况，比如page fault，breakpoint, syscall，注意要在init的时候在syscall和breakpoint的gate中权限设置成用户的，这样才不会报general protection fault
+
+在用户程序访问kernel空间会报什么错？以及这个检查错误流程是怎么样的？
+
+如何在xv6中增加一个syscall
+用户态：
+1. 定义一个原型，比如int date(struct rtcdate *r);
+2. 实现原型，即SYSCALL(date)，这是个宏，宏的实现就把sys number赋给eax，然后调用int（内联汇编或直接汇编实现都可以）
+内核态：
+1. 在系统调用表里注册这个函数sys_date，即把处理这个系统调用的函数放到这个数组的最后
+2. 实现这个函数
+
+如果在内核执行一个interrupt handler的时候又有中断过来怎么办 ？
+
+LEC 9：Locking
+
+lock contention是很费时间的，如果一个处理器把锁缓存在自己的cache中，现在另一个处理器需要这个锁就会从原来的处理器缓存读过来，可能还要使其它cacheline中的拷贝失效，这个过程相比直接从缓存读，相当耗时。
+
+xv6的spinlock的底层实现：用一个原子汇编指令xchg，将某个内存的值和变量的值（该值为1）交换，如果交换过来的值为0，说明该锁没有被占用，又把1交换过去了，即获得锁。
+
+如果CPU是bottleneck的场景适合用多线程/进程，否则提高幅度并不是很大。
+
+big lock又叫做coarse-grained lock（simple，slow）
+small lock又叫做fine-grained lock（complex，fast）
+
+锁粒度怎么选择？如果一段代码的并行运行机会很低，一个big lock就可以满足需求，因为它更简单，意味着更少的可能bug。比如，如果大部分CPU时间花在了用户态，那么big kernel lock就可以用。
+
+在xv6中，内核代码获得锁之前为什么要关中断？
+如果不关中断，此时正在某个临界区里，中断来了执行处理函数，获得锁（只要在同一个cpu上处理中断），那么就进入了临界区了，这样就有两个执行单元在同一个临界区里。
+
+memory ordering
+编译器和CPU会对指令重排（达到提高效率的目的），比如
+    locked = 1
+    x = x + 1
+    locked = 0
+会变成
+      locked = 1
+      locked = 0
+      x = x + 1
+call to xchg() tells compiler and x86 not to re-order:
+    intel promises not to re-order past xchg instruction
+
+xv6用的是spin lock适合临界区非常小的情况，如果不spin的话，把当前执行状态保存立刻又切换回来会很浪费。
+mutex适合临界区比较大的情况，如果一直spin会浪费cpu时间，就让其它进程运行
+
+进程调度器其实也是一个内核进程/可执行单元，意味着它拥有自己的stack pointer。每次在context switch的时候，都调用swtch函数，把当前esp存起来，然后把另一个值（原来可执行单元的esp）赋给esp，即切换了进程/执行单元
+
+coroutine这个概念是不是最早起源于OS，P60
+
+在xv6中每一个process都有各自的kernel stack
+
+为什么要在获得锁之后关中断：获得锁后，临界区中的代码会串行执行，但是中断会尝试再次进入该临界区，产生race condition
+
+memory-mapped I/O (MMIO). In MMIO, a portion of physical memory is hardwired to the registers of some I/O devices, so the same load/store instructions typically used to access memory can be used to access device registers.
+
+boot_aps(kern/init.c) 将 kern/mpentry.S 中的代码复制到0x7000处，然后让application processor（AP）跳转到这个地址。kern/mpentry.S中的代码和boot.S很像，其中会跳转到mp_main（kern/init.c）函数。
+
+修了一个bug：如果a是size_t类型（unsigned int），那么a > 0除了a==0，那么永远为true
+
+cpunum(kern/cpu.h)这个函数的原理是什么？
+
+xv6有一个调度器线程，并且每个process都有自己的kernelstack，于是可以把tf都保存在kernel stack上；而JOS没有这个调度器线程，而是把tf保存在env变量中，直接把esp设置到该变量的起始地址然后pop..iret即可。
+
+JOS不支持x87，MMX，SSE，如何支持？lab4 challenge
+
+内核栈是per-process的还是共享的，以及esp，ss存在哪里的？和tss有没有关系？
+答，内核栈是由cpu的taskstate决定的，如果taskstate中的ss0和esp0在每次调度都会变成和进程相关的值（xv6），那么内核栈就是per-process的；如果ss0和esp0是固定不变的，那么内核栈就是共享的（JOS）
+
+需要sleep的原因，避免无故浪费CPU。
+sleep需要锁的原因：因为进程调度的原因导致了“lost wakeup”问题（比如判断队列为空，然后睡觉，这里有一个间隙，如果调度到别的进程，发生队列为空，加入一个item，会调用wakeup，此时的wakeup就丢失了，因为没有正在睡觉的进程），通过锁保证代码的原子性
+sleep有两个参数的原因：第一参数表明在哪个channel上sleep，第二个参数是需要释放的锁，否则睡觉进程一直占用着锁会导致死锁，被唤醒后需要重新获得该锁。
+
+如果多个进程等在一个pipe上，该pipe可读时，所有这些进程都会被wakeup，但是只有其中一个进程能读到数据，其余的wakeup都是spurious。For this reason sleep is always called inside a loop that checks the condition.
+
+在vx6中，exit函数会回收必要的资源，但是kernel stack和pgdir必须由父进程来回收，否则试想一下一旦页表没了程序还怎么运行？
+
+如果在kill实现中直接销毁回收该进程，那么就太复杂了，因为该进程可能在干任何事，可能运行在别的CPU上，可能在更新内核数据结构时sleep。所以，采取的一个办法是把该进程的killed变量设为1，如果睡着就叫醒。所以在sleep醒来后检查killed，若是return -1，另外进入trap时都要检查killed变量，是1就调exit。
+
+为什么需要condition variable，因为它阻止了程序一直获得锁释放锁的浪费CPU行为（busy waiting），只有等到某个“condition”发生，该进程才被重新唤醒并获得锁后返回用户函数。理解来自教材P68：Scanning  the entire process list in wakeup for processes with a matching chan is inefficient. A better solution is to replace the chan in both sleep and wakeup with a data structure that holds a list of processes sleeping on that structure. Many thread libraries refer to the structure as condition variable; in that context, the operations sleep and wakeup are called wait and signal.
+
+semaphore(to solve lost-wakeup problem)和condtion variable有着相似的作用
+
+实现COW fork时需要解决的一个问题：一个va发生了page fault，那么有很多可能，可能需要从磁盘读，或swap区域读，或者直接分配一个内存页（malloc），或者分配一个清0的内存页（bss）...... page fault handler中怎么处理这么多情况。这是一个难点
+
+在处理recursive pgfault的时候要在exception stack上留出4个byte，因为handler会在原来的stack上push一个return address，而此时的exception stack就是原来的stack，所以要预留出这个空间。
+
+直接写汇编非常容易出错，今天晚上因为一个struct的offset计算错误调试了很久。
+
+什么时候触发general protection fault，什么侍候触发page fault
+
+exception stack为什么不能和normal stack共用？
+
+External interrupts (i.e., device interrupts) are referred to as IRQs.
+
+发生exception或者interrupt后，CPU会自动关中断（FL_IF置0）
+
+在收到时钟中断后为什么要acknowledge the interrupt?
+
+LAB4 partC的一个难点：多核运行primes（一个不断fork计算质数的程序），会出错，错误信息还每次不一样啊，怎么调试？
+过程：为什么某个程序在执行的时候eip会突然变0
+几种反复出现的错误：
+1. e->env_status == ENV_FREE，原因是lib中exofork返回的env_id老是等于7
+2. 用户程序执行代码 a %b 时DIVIDE error，而b是通过ipc接受的值，理论上不可能为0，所以接收不正确导致的
+发现一个问题，虽然有big kernel lock，但内核还是可以并行执行的，锁的只是从用户态trap到内核态的情况，可是在kernel的时候是关中断的，怎么会在kernel里产生时钟中断呢
+调试发现，是调度器的代码写错了，原来是：
+    for (i = 0; i < NENV; i++) {
+        next_envid = (first_eid+i) % NENV;
+        if (envs[next_envid].env_status == ENV_RUNNING &&
+            envs[next_envid].env_cpunum == cpunum()) {
+            env_run(&envs[next_envid]);
+            break;
+        }
+    }
+改成：
+    if (curenv && curenv->env_status == ENV_RUNNING) {
+        env_run(curenv);
+    }
+就可以了。但问题是，这两段代码应该是完全等价的！！！
+打log发现，一个正在running的进程的cpunum和它真实的cpunum是不一样的！！所以在上面一段代码里会找到一个正在别的核上跑的进程然后调度它。
+但问题是，代码的逻辑不是这样的，cpunum就是它正在运行的cpunum。
+然后我把env_pop_tf里设置cpunum的代码放到释放Big kernel lock锁之前，就一切正常了。
+所以一切说通了，在第一段代码中，在设置cpunum之前、释放锁之后，有一个CPU抢占了内核，发现该进程是RUNNING的，并且cpunum也是当前cpu（因为之前的那个CPU还没来得及设置），于是就调度了这个进程，显然是错误的。但第二段代码中没有用cpunum这个变量，所以可以避开这个bug。
+这个env_pop_tf函数是课程给的，所以给错了。
+
+xv6-uthread这个作业展现了在user-level怎么实现多线程。但这个方案有一些缺点：
+1. 比如一个user thread阻塞住了，其余的thread都无法运行了
+2. 就算是多核，user thread也无法并行，因为在xv6 scheduler无法意识到有多个thread可以运行
+解决上述问题有几个方法：
+1. scheduler activations
+2. one kernel thread per user-level thread (as Linux kernels do)
+
+memory barrier（是程序中的一个点，假设有一组执行线程，任意一个线程达到这个点都得停下来直到所有线程到达这个点）的实现原来那么简单，用mutex + condition variable就能实现，具体来说，有n个线程，维护一个struct barrier，里面有一个变量curn，当curn == n时，broadcast。hw_barrier/barrier.c
+
+FS
+
+为什么需要file system?
+为磁盘提供一层抽象，使得使用磁盘的程序可以更方便地读取和存储数据。
+
+在xv6中，1 block=1 sector，一般都是512Bytes。
+在一般的语境下sector和block的区别：sector size is a property of the disk hardware, whereas block size is an aspect of the operating system using the disk. A file system's block size must be a multiple of the sector size of the underlying disk.
+
+The file system must have a plan for where it stores inodes and content blocks on the disk.
+
+in-memory inode, which contains a copy of the on-disk inode。这是两个独立的struct
+
+文件夹其实就是一个文件，inode type是T_DIR，并且data block里存的是directory entries（名字到inode的映射）
+
+实现一个file system的难点之一：crash recovery
+比如删除一个文件，涉及到两个操作：
+1. 删除这个文件所在的文件夹中对应的dentry
+2. 删除这个文件对应的inode以及数据块
+如果操作任意一个操作时系统crash了，那么都会使FS处于一个不一致的状态。
+解决方法之一：write ahead logging
+WAL的实现原理：在磁盘上有专门一个区域来存放log，依次为log header、block1、block2…，如果要做一个原子的磁盘块操作，先把要更新的磁盘块存到log区中的block块中，将它属于的block number写到log header中，全部写完后，将log header中的n更新（n代表有多少个块需要更新），此时就代表写成功了，如果系统在写n之前挂掉，就等于什么都没做；如果在写n之后挂掉，启动的时候把log写回对应的块即可。
+
+如何实现signal传递？和之前做的一个作业调用用户态的alarm函数原理是一样的，每次中断结束前都判断一下条件是否有信号，如果有的话，就把eip改成该信号函数的入口，并且要保证返回到原来的用户代码。
+
+在看log实现的时候，发现之前在腾讯实习的时候实现shared memory有一个难点就是怎么处理crash recovery完全没有做，也没有想到过这一点！（还有一个难点就是无法利用指针，实验室做的项目也遇到这个问题）
+
+文件系统有那么多层抽象都是软件层提供的，最终都会调用idewr这个函数来进行真正的读写磁盘block的操作，这些抽象是为了让使用文件系统更加方便、效率高（功能上不必要的）、crash recovery（功能上必要的），如果没有这些“不必要”抽象，效率会非常差，每次block操作都会进行I/O。
+
+磁盘的数据分布就像人的一生时间分布，磁盘上真正存数据的地方就好比人生中工作学习娱乐的时间，磁盘上元数据的地方就好比人生中对工作学习的思考，即元思考。
+
+在xv6中关于fs的cache主要有以下几个：
+1. buffer cache，作为disk block的cache
+2. inode cache
+3. log header，如果启动的时候发现发现log header里有已经commit的操作但还没来得及清除这个commit，则重做一遍
+
+inode是为了解决硬链接引起的数据冗余的问题，如果没有inode，那么就是directory entry存的就是name和文件的相关信息(原本通过inode number来访问struct inode里的信息)。试想如果有N个文件夹都包含同一个文件，那么文件相关信息就有N份拷贝。这个思想和数据库schema设计去冗余的思想好像竟然是一样的。
+
+JOS微内核中FS进程的地址空间才能用3G，怎么表示远远超过3G的磁盘空间？看了代码发现，JOS的磁盘空间只有3G，暂时不能处理大于3G的空间。
+
+JOS中的磁盘读写不是中断驱动而是轮询的，详细的在fs/ide.c中。（一直搞不明白这里的ide是什么意思，是一种协议吗，和sata的区别？）
+
+一个页是不是dirty（PTE_D）、是否被访问（PTE_A）都是存在PTE中的flag，当操作发生时由硬件来设置
+
+remote procedure call, or RPC是一种抽象，使一方可以使用另一方的功能或函数，在JOS中，其它进程通过RPC和FS进程通信（打开、读写文件等），实现方式是IPC机制。
+
+JOS内核在占有锁后不能调用sleep来释放锁，因为进程没有单独的内核栈，所以无法保存当前进程的内核栈esp（内核栈要被下一个进程重用），每次调度都是从陷入内核的用户空间代码开始执行；而xv6则不同，每个进程都有独自的内核栈，所以可以在获得锁后通过sleep函数进入NOT_RUNNABLE状态，保存当前内核栈的esp，下次接着执行sleep剩下的部分（重新获得锁...）
+
+JOS中的FS进程的eflag里有一位是I/O权限位，将它置一就可以让该进程进行I/O。
+
+JOS中好多内核数据可以在内核访问和修改，比如uvpt，uvpd，如果页表能访问的话，应用程序不是可以随意控制自己访问哪块物理内存？把别的进程的物理内存写了怎么办
+答: 没有写权限
+
+CGA display and the serial port？
+
+修了一个bug，lab5做完后虽然测试都过了，但无法输入字符和输出字符，调试发现在syscall里getc这个系统调用没有正确return，而是return 0，所以可能都被应用程序当成EOF来处理了（具体是什么原因？）
+
+Disk schedule algorithm是在哪里实现的？可以在driver里实现，所有发送到driver的request先buffer起来，然后合并，按照某种顺序读写磁盘。在JOS和xv6中，没有用特殊的算法，就是简单的FIFIO。
+
+在设计logging for cash recovery时的trade-off: performance(don't write the disk) vs safety(write the disk ASAP)
+xv6: slow and immediately durable
+ext3: fast but not immediately durable
+
+what's wrong with xv6's logging? it is slow!
+1. all file system operation results in commit（每个commit就意味着磁盘I/O）
+2. synchronous write to on-disk log
+3. tiny update -> whole block write
+4. synchronous writes to home locations after commit（write-through, not write-back）
+
+xv6是一个Monolithic kernel，而JOS是一个Exokernel，这种kernel的哲学是：eliminate all abstractions，即for any problem, expose h/w or info to app, let app do what it wants，它更像是一个lib
+
+xv6会将要显示的字符写到P2V(0xb8000)这个地址上，然后通知硬件(cga?)。具体的函数在console.c中
+xv6的文件描述符0，1，2是在哪里初始化的：
+init.c中会调用mknod（make block or character special files）来创建一个特殊文件，然后再open它，于是它就成为了file descriptor 0。1和2通过dup(0)来实现。
+在读/写fd 0、1、2的时候正常调用read/write，在调用到readi/writei的时候，if判断该inode是一个T_DEV，于是用ip->major作为devsw的索引，找到该设备的读写函数指针，通过这个指针调用函数即可。
+read最终会调用consoleread，它会从一个input buffer中读（由KBD中断来填这个buffer，因为中断的时候页表还是当前进程的，所以可以直接将读到的字符append到buffer后面），如果没有字符可读，就sleep；
+write最终会调用consolewrite，接着调用consputc，接着调uartputc（serial port）和cgaputc（向CGA屏幕输出字符）
+
+MMIO使得驱动编写变得非常简单，驱动就像操作内存一样操作硬件。
+
+为什么要用volatile？告诉编译器不要对这个变量的操作做任何优化，因为该内存有可能被该程序外的东西修改（比如MMIO、shared memory等），如果不加的话，一个while(a)可能会被编译器优化成while(1)；另外，在多线程中用volatile解决变量同步问题都是不对的。ref：http://stackoverflow.com/questions/246127/why-is-volatile-needed-in-c
+
+JOS的读写磁盘是同步操作（fs/ide.c）；而xv6中读写磁盘会让出CPU（注意不是异步，因为最终的读操作还是会阻塞住当前进程），即将请求放到idequeue的末尾，等到下一个磁盘中断来了后，会从这个queue中拿一个请求进行下一次I/O任务
+
+JOS中ns在low_level_output(./net/lwip/jos/jif/jif.c)中调用了ipc_send向ouput进程发送数据。
+
+普通的spinlock无法保证FIFO的服务顺序，linux kernel中的ticket spinlock可以解决这个问题，基本思路是每个要获得锁的线程先拿一个号，然后不断地判断自己号和当前的号是不是一样的。这些kernel都是non scalable lock（底层原因是由cache一致性引起的额外通信代价），运行在多核上的OS需要用scalable lock（比如MCS，一个通俗解释：https://www.quora.com/How-does-an-MCS-lock-work）
